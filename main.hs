@@ -3,13 +3,14 @@ module Main where
 import System
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Control.Monad
+import Test.QuickCheck
 
 data LispVal = Atom String 
     | List [LispVal]
     | DottedList [LispVal] LispVal
     | Number Integer
     | String String
-    | Bool Bool deriving Show
+    | Bool Bool deriving (Eq, Show)
 
 main :: IO ()
 main = do
@@ -30,13 +31,13 @@ spaces = skipMany1 space
 parseString :: Parser LispVal
 parseString = do
                  char '"'
-                 x <- many $ escape <|> (noneOf "\"")
+                 x <- many $ escapedChars <|> (noneOf "\"\\")
                  --x <- many $ (char '\\' >> char '\"') <|> (noneOf "\"")
                  char '"'
                  return $ String x
 
-escape :: Parser Char
-escape = do
+escapedChars :: Parser Char
+escapedChars = do
                  char '\\'
                  x <- oneOf "nrt\"\\"
                  case x of
@@ -45,6 +46,7 @@ escape = do
                     't' -> return '\t'
                     '\"' -> return '\"'
                     '\\' -> return '\\'
+                    _ -> fail "escape error!"
 
 parseAtom :: Parser LispVal
 parseAtom = do
@@ -57,10 +59,14 @@ parseAtom = do
                    _ -> Atom val
 
 parseNumber :: Parser LispVal
---parseNumber = (many1 digit) >>= return . Number . read
+--parseNumber = many1 digit >>= return . Number . read
 --parseNumber = liftM (Number . read) $ many1 digit
 parseNumber = do val <- many1 digit
                  return . Number $ read val
 
 parseExpr :: Parser LispVal
 parseExpr = parseString <|> parseAtom <|> parseNumber
+
+test_String = readExpr "\"a\\\" \\r \\n \tabcd\""
+test_Atom = readExpr "arntabcd"
+test_Number = readExpr "1241"
