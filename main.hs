@@ -9,7 +9,7 @@ data LispVal = Atom String
     | DottedList [LispVal] LispVal
     | Number Integer
     | String String
-    | Bool Bool
+    | Bool Bool deriving Show
 
 main :: IO ()
 main = do
@@ -22,7 +22,7 @@ symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
     Left err -> "No match: " ++ show err
-    Right val -> "Found value"
+    Right val -> "Found value " ++ show val
         
 spaces :: Parser ()
 spaces = skipMany1 space
@@ -30,9 +30,21 @@ spaces = skipMany1 space
 parseString :: Parser LispVal
 parseString = do
                  char '"'
-                 x <- many (noneOf "\"")
+                 x <- many $ escape <|> (noneOf "\"")
+                 --x <- many $ (char '\\' >> char '\"') <|> (noneOf "\"")
                  char '"'
                  return $ String x
+
+escape :: Parser Char
+escape = do
+                 char '\\'
+                 x <- oneOf "nrt\"\\"
+                 case x of
+                    'n' -> return '\n'
+                    'r' -> return '\r'
+                    't' -> return '\t'
+                    '\"' -> return '\"'
+                    '\\' -> return '\\'
 
 parseAtom :: Parser LispVal
 parseAtom = do
