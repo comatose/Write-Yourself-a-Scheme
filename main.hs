@@ -4,6 +4,7 @@ import System
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Control.Monad
 import Test.QuickCheck
+import Numeric
 
 data LispVal = Atom String 
     | List [LispVal]
@@ -18,7 +19,7 @@ main = do
     putStrLn (readExpr (head args))
 
 symbol :: Parser Char
-symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
+symbol = oneOf "!$%&|*+-/:<=>?@^_~"
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
@@ -59,14 +60,41 @@ parseAtom = do
                    _ -> Atom val
 
 parseNumber :: Parser LispVal
---parseNumber = many1 digit >>= return . Number . read
---parseNumber = liftM (Number . read) $ many1 digit
-parseNumber = do val <- many1 digit
-                 return . Number $ read val
+parseNumber =  parseDec <|> parseDec' <|> parseOct <|> parseHex
+
+parseBool :: Parser LispVal
+parseBool = parseTrue <|> parseFalse
+
+parseTrue = do try $ string "#f"
+               return $ Bool False
+
+parseFalse = do try $ string "#t"
+                return $ Bool True
+
+parseDec:: Parser LispVal
+parseDec = do val <- many1 digit
+              return . Number $ read val
+
+parseDec' :: Parser LispVal
+parseDec'  = do try $ string "#d"
+                val <- many1 digit
+                return . Number $ read val
+
+parseOct :: Parser LispVal
+parseOct  = do try $ string "#o"
+               val <- many1 octDigit
+               return . Number . fst . head $ readOct val
+
+parseHex :: Parser LispVal
+parseHex  = do try $ string "#x"
+               val <- many1 hexDigit
+               return . Number . fst . head $ readHex val
 
 parseExpr :: Parser LispVal
-parseExpr = parseString <|> parseAtom <|> parseNumber
+parseExpr = parseString <|> parseBool <|> parseNumber <|> parseAtom 
 
 test_String = readExpr "\"a\\\" \\r \\n \tabcd\""
 test_Atom = readExpr "arntabcd"
 test_Number = readExpr "1241"
+test_Oct = readExpr "#o10"
+test_Bool = readExpr "#t"
