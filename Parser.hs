@@ -15,9 +15,6 @@ data LispVal = Atom String
     | Float Double
     deriving (Eq)
 
-instance Show LispVal where
-    show = showVal
-
 parseExpr :: Parser LispVal
 parseExpr = parseString
         <|> parseBool 
@@ -32,11 +29,6 @@ parseExpr = parseString
 
 symbol :: Parser Char
 symbol = oneOf "!$%&|*+-/:<=>?@^_~"
-
-readExpr :: String -> String
-readExpr input = case parse parseExpr "lisp" input of
-    Left err -> "No match: " ++ show err
-    Right val -> "Found value " ++ show val
         
 spaces :: Parser ()
 spaces = skipMany1 space
@@ -54,7 +46,7 @@ escapedChars = do
                  char '\\' 
                  x <- oneOf "nrt\"\\" 
                  case x of
-                    'n' -> return '\n'
+                    'n' -> return '\n' 
                     'r' -> return '\r'
                     't' -> return '\t'
                     '\"' -> return '\"'
@@ -136,26 +128,3 @@ parseQuoted = do
     x <- parseExpr
     return $ List [Atom "quote", x]
 
-showVal :: LispVal -> String
-showVal (String contents) = "\"" ++ contents ++ "\""
-showVal (Atom name) = name
-showVal (Number contents) = show contents
-showVal (Bool True) = "#t"
-showVal (Bool False) = "#f"
-showVal (List xs) = "(" ++ unwordList xs ++ ")"
-showVal (DottedList x y) = "(" ++ unwordList x ++ " . " ++ showVal y ++ ")"
-showVal (Character c) = show c
-showVal (Float f) = show f
-
-unwordList :: [LispVal] -> String
-unwordList = unwords . map showVal
-
--- trivial tests
-test_String = readExpr "\"a\\\" \\r \\n \tabcd\""
-test_Atom = readExpr "arntabcd"
-test_Number = readExpr "1241"
-test_Oct = readExpr "#o10"
-test_Char = readExpr "#\\s"
-test_Bool = readExpr "#t"
-test_Float = readExpr "12.134"
-test_List = readExpr "(#\\s #\\space 222 (124 atom 12.32 \"HI1~!\") . '123)"
