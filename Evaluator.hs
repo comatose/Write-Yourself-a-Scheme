@@ -34,12 +34,6 @@ instance Error LispError where
 
 type ThrowsError = Either LispError
 
-trapError ::  (MonadError e m, Show e) => m String -> m String
-trapError action = catchError action (return . show)
-
-extractValue ::  ThrowsError a -> a
-extractValue (Right val) = val
-
 showVal :: LispVal -> String
 showVal (String contents) = "\"" ++ contents ++ "\""
 showVal (Atom name) = name
@@ -73,7 +67,7 @@ eval (List (Atom f:args)) = apply f =<< mapM eval args
 eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply ::  String -> [LispVal] -> ThrowsError LispVal
-apply f args = maybe (throwError $ NotFunction "" f) ($ args) op
+apply f args = maybe (throwError $ NotFunction "Unrecognized primitive function args" f) ($ args) op
     where op = lookup f primitives
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
@@ -99,10 +93,16 @@ isNumber [(Number _)] = return $ Bool True
 inNumber _ = return $ Bool False
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
-numericBinop op xs = return . Number . foldl1 op $ map unpackNum xs
+numericBinop _ x@[_] = throwError $ NumArgs 2 x
+numericBinop op xs = do args <- mapM unpackNum xs
+                        return . Number $ foldl1 op args
 
-unpackNum ::  LispVal -> Integer
-unpackNum (Number x) = x
-unpackNum (String x) = read x
+unpackNum ::  LispVal -> ThrowsError Integer
+unpackNum (Number x) = return x
+unpackNum (String x) = let n = reads x in
+                           if null n
+                              then throwError $ TypeMismatch "number" (String x)
+                              else return . fst $ head n
+
 unpackNum (List [x]) = unpackNum x
-unpackNum _ = undefined
+unpackNum x = throwError $ TypeMismatch "number" x
