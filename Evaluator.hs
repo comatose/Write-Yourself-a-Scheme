@@ -91,7 +91,13 @@ primitives = [("+", numericBinop (+)),
               ("string>=?", strBoolBinop (>=)),
               ("symbol?", anyUnop isSymbol),
               ("string?", anyUnop isString),
-              ("number?", anyUnop isNumber) ]
+              ("number?", anyUnop isNumber),
+              ("car", car),
+              ("cdr", cdr),
+              ("cons", cons),
+              ("eq?", eqv),
+              ("eqv?", eqv),
+              ("equal?", equal)]
 
 numBoolBinop = boolBinop unpackNum
 strBoolBinop = boolBinop unpackStr
@@ -128,6 +134,7 @@ unpackNum (String x) = let n = reads x in
 unpackNum (List [x]) = unpackNum x
 unpackNum x = throwError $ TypeMismatch "number" x
 
+unpackStr ::  LispVal -> ThrowsError String
 unpackStr (String x) = return x
 unpackStr (Number x) = return $ show x
 unpackStr (Bool x) = return $ show x
@@ -171,3 +178,20 @@ eqv [_, _] = return $ Bool False
 eqv badArgList = throwError $ NumArgs 2 badArgList
 
 data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
+
+unpackEquals :: LispVal -> LispVal -> Unpacker -> ThrowsError Bool
+unpackEquals v1 v2 (AnyUnpacker up) = 
+             do
+                v1' <- up v1
+                v2' <- up v2
+                return $ v1' == v2'
+             `catchError` (const $ return False)
+
+unpackers = [AnyUnpacker unpackNum, AnyUnpacker unpackStr, AnyUnpacker unpackBool]
+
+equal :: [LispVal] -> ThrowsError LispVal
+equal [v1, v2] = do 
+        e1 <-  liftM or $ mapM (unpackEquals v1 v2) unpackers
+        e2 <- eqv [v1, v2]
+        return . Bool $ (e1 || let (Bool x) = e2 in x)
+equal bad = throwError $ NumArgs 2 bad
