@@ -23,6 +23,7 @@ readPrompt :: String -> IO String
 readPrompt prompt = flushStr prompt >> getLine
 
 evalString :: String -> IO String
+--evalString expr = runIOThrows . liftM show $ liftThrows (readExpr expr >>= eval)
 evalString expr = return . extractValue $ trapError (liftM show $ readExpr expr >>= eval)
 
 evalAndPrint :: String -> IO ()
@@ -40,20 +41,22 @@ runRepl = until_ (== "quit") (readPrompt "scheme> ") evalAndPrint
 
 rep ::  String -> IO ()
 rep expr = 
-    let val = extractValue $ trapError (readExpr expr >>= eval)
+    let val = extractValue $ trapError (liftM show $ readExpr expr >>= eval)
     in print $ show val
 
-trapError ::  ThrowsError LispVal -> ThrowsError LispVal
-trapError action = catchError action (return . String . show)
+trapError action = catchError action (return . show)
 
-extractValue ::  ThrowsError a -> a
+extractValue :: ThrowsError a -> a
 extractValue (Right val) = val
 
 readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of
     Left err -> throwError $ Parser err
     Right val -> return val
-    --
+
+runIOThrows :: IOThrowsError String -> IO String
+runIOThrows action = runErrorT (trapError action) >>= return . extractValue
+
 -- trivial tests
 test_String = readExpr "\"a\\\" \\r \\n \tabcd\""
 test_Atom = readExpr "arntabcd"

@@ -5,6 +5,12 @@ import Parser
 import Control.Monad
 import Control.Monad.Error
 import Text.ParserCombinators.Parsec hiding (spaces)
+import Data.IORef
+
+type Env = IORef [(String, IORef LispVal)]
+
+nullEnv :: IO Env
+nullEnv = newIORef []
 
 instance Show LispVal where
     show = showVal
@@ -34,6 +40,14 @@ instance Error LispError where
     strMsg = Default
 
 type ThrowsError = Either LispError
+
+type IOThrowsError = ErrorT LispError IO
+
+liftThrows :: ThrowsError a -> IOThrowsError a
+liftThrows = ErrorT . return
+--liftThrows (Left err) = throwError err
+--liftThrows (Right val) = return val
+
 
 showVal :: LispVal -> String
 showVal (String contents) = "\"" ++ contents ++ "\""
@@ -195,3 +209,13 @@ equal [v1, v2] = do
         e2 <- eqv [v1, v2]
         return . Bool $ (e1 || let (Bool x) = e2 in x)
 equal bad = throwError $ NumArgs 2 bad
+
+isBound :: Env -> String -> IO Bool
+isBound envRef var = readIORef envRef >>= return . maybe False (const True) . lookup var
+
+getVar :: Env -> String -> IOThrowsError LispVal
+getVar envRef var = do
+    env <- liftIO $ readIORef envRef
+    maybe (throwError $ UnboundVar "Getting an unbound variable: " var)
+          (liftIO . readIORef)
+          (lookup var env)
