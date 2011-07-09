@@ -219,3 +219,10 @@ getVar envRef var = do
     maybe (throwError $ UnboundVar "Getting an unbound variable: " var)
           (liftIO . readIORef)
           (lookup var env)
+
+setVar :: Env -> String -> LispVal -> IOThrowsError LispVal
+setVar envRef var val = do
+    env <- liftIO $ readIORef envRef
+    maybe (throwError $ UnboundVar "Setting an unbound variable: " var)
+          (liftIO . flip writeIORef val)
+          (lookup var env)
