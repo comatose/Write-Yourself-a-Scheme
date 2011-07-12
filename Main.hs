@@ -4,6 +4,7 @@ import System
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Control.Monad.Error
 import IO hiding (try)
+import Data.IORef
 
 import Parser
 import Evaluator
@@ -13,7 +14,7 @@ main = do
     args <- getArgs
     case length args of
         0 -> runRepl
-        1 -> evalAndPrint $ head args
+        1 -> runOne $ head args 
         otherwise -> putStrLn "Program takes only 0 or 1 argument"
 
 flushStr :: String -> IO ()
@@ -22,12 +23,12 @@ flushStr str = putStr str >> hFlush stdout
 readPrompt :: String -> IO String
 readPrompt prompt = flushStr prompt >> getLine
 
-evalString :: String -> IO String
---evalString expr = runIOThrows . liftM show $ liftThrows (readExpr expr >>= eval)
-evalString expr = return . extractValue $ trapError (liftM show $ readExpr expr >>= eval)
+evalString :: Env -> String -> IO String
+evalString env expr = runIOThrows $ liftM show $ (liftThrows $ readExpr expr) >>= (eval env)
+--evalString env expr = return . extractValue $ trapError (liftM show $ readExpr expr >>= eval)
 
-evalAndPrint :: String -> IO ()
-evalAndPrint expr = evalString expr >>= putStrLn
+evalAndPrint :: Env -> String -> IO ()
+evalAndPrint env expr = evalString env expr >>= putStrLn
 
 until_ :: Monad m => (a -> Bool) -> m a -> (a -> m()) -> m ()
 until_ pred prompt action = do
@@ -36,14 +37,22 @@ until_ pred prompt action = do
         then return ()
         else action result >> until_ pred prompt action
 
+runOne :: String -> IO ()
+runOne expr = nullEnv >>= flip evalAndPrint expr
+
 runRepl :: IO ()
-runRepl = until_ (== "quit") (readPrompt "scheme> ") evalAndPrint
+runRepl = do
+    env <- nullEnv
+    until_ (== "quit") (readPrompt "scheme> ") (evalAndPrint env)
 
 rep ::  String -> IO ()
-rep expr = 
-    let val = extractValue $ trapError (liftM show $ readExpr expr >>= eval)
-    in print $ show val
+rep expr = do
+    env <- nullEnv
+    val <- runIOThrows $ liftM show $ (liftThrows $ readExpr expr) >>= eval env
+    print $ show val
 
+--trapError :: (MonadError LispError m) => m String -> m String
+trapError ::  (MonadError e m, Show e) => m String -> m String
 trapError action = catchError action (return . show)
 
 extractValue :: ThrowsError a -> a

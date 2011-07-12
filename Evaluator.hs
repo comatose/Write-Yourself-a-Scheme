@@ -62,21 +62,27 @@ showVal (Float f) = show f
 unwordList :: [LispVal] -> String
 unwordList = unwords . map showVal
 
-eval :: LispVal -> ThrowsError LispVal
-eval val@(String _) = return $ val
-eval val@(Number _) = return $ val
-eval val@(Bool _) = return $ val
-eval val@(Character _) = return $ val
-eval val@(Float _) = return $ val
-eval (List [Atom "quote", val]) = return $ val
-eval (List [Atom "if", pred, ts, fs]) = 
-                     do p <- eval pred
+eval :: Env -> LispVal -> IOThrowsError LispVal
+eval _ val@(String _) = return val
+eval _ val@(Number _) = return val
+eval _ val@(Bool _) = return val
+eval _ val@(Character _) = return val
+eval _ val@(Float _) = return val
+eval env (Atom id) = getVar env id
+eval _ (List [Atom "quote", val]) = return val
+eval env (List [Atom "if", pred, ts, fs]) = 
+                     do p <- eval env pred
                         case p of
-                             (Bool False) -> eval fs
-                             otherwise -> eval ts
+                             (Bool False) -> eval env fs
+                             otherwise -> eval env ts
+eval env (List [Atom "set!", Atom var, val]) =
+                     eval env val >>= setVar env var
+eval env (List [Atom "define", Atom var, val]) =
+                     eval env val >>= defineVar env var
 
-eval (List (Atom f:args)) = apply f =<< mapM eval args 
-eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
+eval env (List (Atom f:args)) = 
+        mapM (eval env) args >>= (liftThrows . apply f)
+eval _ badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply ::  String -> [LispVal] -> ThrowsError LispVal
 apply f args = maybe (throwError $ NotFunction "Unrecognized primitive function args" f) ($ args) op
@@ -226,3 +232,33 @@ setVar envRef var val = do
     maybe (throwError $ UnboundVar "Setting an unbound variable: " var)
           (liftIO . flip writeIORef val)
           (lookup var env)
+    return val
+
+defineVar :: Env -> String -> LispVal -> IOThrowsError LispVal
+defineVar envRef var val = do
+--    bound <- liftIO $ isBound envRef var
+--    if bound
+--       then setVar envRef var val
+--       else liftIO $ do
+--           newVal <- newIORef val
+--           modifyIORef envRef ((var, newVal):)
+--           return val
+      (setVar envRef var val)
+      `catchError`
+      (\_ -> liftIO $ do
+           newVal <- newIORef val
+           modifyIORef envRef ((var, newVal):)
+           return val)
+
+bindVars :: Env -> [(String, LispVal)] -> IO Env
+bindVars envRef vals = do
+    env <- readIORef envRef
+    new <- newBindings
+    newIORef $ new ++ env
+    where
+        newBindings :: IO [(String, IORef LispVal)]
+        newBindings = mapM refBind vals
+        refBind :: (String, LispVal) -> IO (String, IORef LispVal)
+        refBind (var, val) = do
+            valRef <- newIORef val
+            return (var, valRef)
