@@ -4,6 +4,19 @@ import Text.ParserCombinators.Parsec hiding (spaces)
 import Control.Monad
 import Test.QuickCheck
 import Numeric
+import Data.IORef
+
+data LispError = NumArgs Integer [LispVal]
+                | TypeMismatch String LispVal
+                | Parser ParseError
+                | BadSpecialForm String LispVal
+                | NotFunction String String
+                | UnboundVar String String
+                | Default String
+
+type ThrowsError = Either LispError
+
+type Env = IORef [(String, IORef LispVal)]
 
 data LispVal = Atom String 
     | List [LispVal]
@@ -13,7 +26,9 @@ data LispVal = Atom String
     | Bool Bool
     | Character Char 
     | Float Double
-    deriving (Eq)
+    | PrimitiveFunc ([LispVal] -> ThrowsError LispVal)
+    | Func {params :: [String], vararg :: (Maybe String),
+        body :: [LispVal], closure :: Env}
 
 parseExpr :: Parser LispVal
 parseExpr = parseString

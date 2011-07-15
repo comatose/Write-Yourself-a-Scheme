@@ -7,21 +7,11 @@ import Control.Monad.Error
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Data.IORef
 
-type Env = IORef [(String, IORef LispVal)]
-
 nullEnv :: IO Env
 nullEnv = newIORef []
 
 instance Show LispVal where
     show = showVal
-
-data LispError = NumArgs Integer [LispVal]
-                | TypeMismatch String LispVal
-                | Parser ParseError
-                | BadSpecialForm String LispVal
-                | NotFunction String String
-                | UnboundVar String String
-                | Default String
 
 showError :: LispError -> String
 showError (UnboundVar message varname) = message ++ ": " ++ varname
@@ -38,8 +28,6 @@ instance Show LispError where show = showError
 instance Error LispError where
     noMsg = Default "An Error has occured"
     strMsg = Default
-
-type ThrowsError = Either LispError
 
 type IOThrowsError = ErrorT LispError IO
 
@@ -59,6 +47,13 @@ showVal (List xs) = "(" ++ unwordList xs ++ ")"
 showVal (DottedList x y) = "(" ++ unwordList x ++ " . " ++ showVal y ++ ")"
 showVal (Character c) = show c
 showVal (Float f) = show f 
+showVal (PrimitiveFunc _) = "<primitive>"
+showVal (Func {params = args, vararg = varargs, body = body, closure = env}) =
+      "(lambda (" ++ unwords (map show args) ++ 
+         (case varargs of 
+            Nothing -> ""
+            Just arg -> " . " ++ arg) ++ ") ...)" 
+
 unwordList :: [LispVal] -> String
 unwordList = unwords . map showVal
 
@@ -84,7 +79,12 @@ eval env (List (Atom f:args)) =
         mapM (eval env) args >>= (liftThrows . apply f)
 eval _ badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
-apply ::  String -> [LispVal] -> ThrowsError LispVal
+apply ::  LispVal -> [LispVal] -> IOThrowsError LispVal
+apply (PrimitiveFunc f) args = liftThrows $ f args
+apply (Func params vararg body closure) args = do
+    env <- readIORef closure
+    nenv <- liftIO $ bindVars env (zip params args)
+
 apply f args = maybe (throwError $ NotFunction "Unrecognized primitive function args" f) ($ args) op
     where op = lookup f primitives
 

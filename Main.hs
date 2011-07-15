@@ -41,9 +41,10 @@ runOne :: String -> IO ()
 runOne expr = nullEnv >>= flip evalAndPrint expr
 
 runRepl :: IO ()
-runRepl = do
-    env <- nullEnv
-    until_ (== "quit") (readPrompt "scheme> ") (evalAndPrint env)
+runRepl = nullEnv >>= until_ (== "quit") (readPrompt "scheme> ") . evalAndPrint
+--  do
+--     env <- nullEnv
+--     until_ (== "quit") (readPrompt "scheme> ") (evalAndPrint env)
 
 rep ::  String -> IO ()
 rep expr = do
