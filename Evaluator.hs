@@ -76,14 +76,18 @@ eval env (List [Atom "define", Atom var, val]) =
                      eval env val >>= defineVar env var
 
 eval env (List (Atom f:args)) = 
-        mapM (eval env) args >>= (liftThrows . apply f)
+        mapM (eval env) args >>= (apply f)
 eval _ badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply ::  LispVal -> [LispVal] -> IOThrowsError LispVal
 apply (PrimitiveFunc f) args = liftThrows $ f args
-apply (Func params vararg body closure) args = do
-    env <- readIORef closure
-    nenv <- liftIO $ bindVars env (zip params args)
+apply (Func params vararg body closure) args = 
+    if vararg == Nothing && length params /= length args
+       then throwError $ NumArgs (length params) args
+       else liftIO $ bindVars closure (zip params args) >>= 
+            bindVarArgs >>= evalBody
+            where bindVarArgs env = liftIO $ bindVars env [(vararg, List $ drop (length params) args)]
+                  evalBody env = liftM last $ mapM (eval env) body
 
 apply f args = maybe (throwError $ NotFunction "Unrecognized primitive function args" f) ($ args) op
     where op = lookup f primitives
