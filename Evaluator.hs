@@ -1,8 +1,11 @@
 {-# LANGUAGE ExistentialQuantification #-}
+--{-# LANGUAGE TypeSynonymInstances #-}
+--{-# LANGUAGE MultiParamTypeClasses #-}
+
 module Evaluator where
 
+import Monad
 import Parser
-import Control.Monad
 import Control.Monad.Error
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Data.IORef
@@ -74,23 +77,33 @@ eval env (List [Atom "set!", Atom var, val]) =
                      eval env val >>= setVar env var
 eval env (List [Atom "define", Atom var, val]) =
                      eval env val >>= defineVar env var
+eval env (List (Atom "define" : List (Atom var : params) : body)) =
+    makeNormalFunc env params body >>= defineVar env var
+eval env (List (Atom "define" : DottedList (Atom var : params) varargs : body)) = 
+    makeVarargs varargs env params body >>= defineVar env var
+eval env (List (Atom "lambda" : List params : body)) =
+    makeNormalFunc env params body
+eval env (List (Atom "lambda" : DottedList params varargs : body)) =
+    makeVarargs varargs env params body
+eval env (List (Atom "lambda" : varargs@(Atom _) : body)) =
+eval env (List (f:args)) = do
+    func <- eval env f
+    vals <- mapM (eval env) args
+    apply func vals
 
-eval env (List (Atom f:args)) = 
-        mapM (eval env) args >>= (apply f)
 eval _ badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply ::  LispVal -> [LispVal] -> IOThrowsError LispVal
 apply (PrimitiveFunc f) args = liftThrows $ f args
 apply (Func params vararg body closure) args = 
-    if vararg == Nothing && length params /= length args
-       then throwError $ NumArgs (length params) args
-       else liftIO $ bindVars closure (zip params args) >>= 
-            bindVarArgs >>= evalBody
-            where bindVarArgs env = liftIO $ bindVars env [(vararg, List $ drop (length params) args)]
-                  evalBody env = liftM last $ mapM (eval env) body
-
-apply f args = maybe (throwError $ NotFunction "Unrecognized primitive function args" f) ($ args) op
-    where op = lookup f primitives
+    if vararg == Nothing && num params /= num args
+       then throwError $ NumArgs (num params) args
+       else (liftIO $ bindVars closure (zip params args)) >>= 
+            bindVarArgs vararg >>= evalBody
+    where 
+          num = toInteger . length
+          bindVarArgs (Just varg) env = liftIO $ bindVars env [(varg, List $ drop (length params) args)]
+          evalBody env = liftM last $ mapM (eval env) body
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
 primitives = [("+", numericBinop (+)),
@@ -266,3 +279,15 @@ bindVars envRef vals = do
         refBind (var, val) = do
             valRef <- newIORef val
             return (var, valRef)
+
+primitiveBindings :: IO Env
+primitiveBindings = nullEnv >>= flip bindVars (map makePrimitiveFunc primitives)
+    where makePrimitiveFunc :: (String, [LispVal] -> ThrowsError LispVal) -> (String, LispVal)
+          makePrimitiveFunc (fname, func) = (fname, PrimitiveFunc func)
+
+makeFunc :: Monad m =>Maybe String -> Env -> [LispVal] -> [LispVal] -> m LispVal
+makeFunc varargs env params body = return $ Func (map showVal params) varargs body env
+makeNormalFunc :: Monad m => Env -> [LispVal] -> [LispVal] -> m LispVal
+makeNormalFunc = makeFunc Nothing
+makeVarargs :: Monad m => LispVal -> Env -> [LispVal] -> [LispVal] -> m LispVal
+makeVarargs = makeFunc . Just . showVal

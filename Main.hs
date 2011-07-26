@@ -38,10 +38,10 @@ until_ pred prompt action = do
         else action result >> until_ pred prompt action
 
 runOne :: String -> IO ()
-runOne expr = nullEnv >>= flip evalAndPrint expr
+runOne expr = primitiveBindings >>= flip evalAndPrint expr
 
 runRepl :: IO ()
-runRepl = nullEnv >>= until_ (== "quit") (readPrompt "scheme> ") . evalAndPrint
+runRepl = primitiveBindings >>= until_ (== "quit") (readPrompt "scheme> ") . evalAndPrint
 --  do
 --     env <- nullEnv
 --     until_ (== "quit") (readPrompt "scheme> ") (evalAndPrint env)
