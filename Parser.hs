@@ -5,6 +5,8 @@ import Control.Monad
 import Test.QuickCheck
 import Numeric
 import Data.IORef
+import Control.Monad.Error
+import IO(Handle)
 
 data LispError = NumArgs Integer [LispVal]
                 | TypeMismatch String LispVal
@@ -15,6 +17,8 @@ data LispError = NumArgs Integer [LispVal]
                 | Default String
 
 type ThrowsError = Either LispError
+
+type IOThrowsError = ErrorT LispError IO
 
 type Env = IORef [(String, IORef LispVal)]
 
@@ -29,6 +33,8 @@ data LispVal = Atom String
     | PrimitiveFunc ([LispVal] -> ThrowsError LispVal)
     | Func {params :: [String], vararg :: (Maybe String),
         body :: [LispVal], closure :: Env}
+    | IOFunc ([LispVal] -> IOThrowsError LispVal)
+    | Port Handle
 
 parseExpr :: Parser LispVal
 parseExpr = parseString
